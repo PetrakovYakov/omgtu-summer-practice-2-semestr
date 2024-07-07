@@ -75,15 +75,98 @@ class DefiniteIntegral
 
 #!csharp
 
-#r "nuget: xunit, 2.8.1"
+public static double Solve1 (double a, double b, Func<double, double> function1, double step1) 
+{
+    double res1 = 0;
+    int w = Convert.ToInt32((b-a)/step1);
+    for(int i=0; i<w; i++)
+    {
+        double x = a + i*step1;
+        res1+=function1(x);
+    }
+    res1*=step1;
+    return res1;
+}
 
-using Xunit;
+#!csharp
 
-var X = (double x) => x;
+using System.Diagnostics;
 var SIN = (double x) => Math.Sin(x);
+double[] output = new double[6];
+double[] steps = { 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6 };
+List<double> optimalsteps = new List<double>();
+for (int i = 0; i < steps.Length; i++)
+{
+    var stopwatch = Stopwatch.StartNew();
+    output[i] = Solve1(-100, 100, SIN, steps[i]);
+    stopwatch.Stop();
+    double time = stopwatch.Elapsed.TotalMilliseconds;
+    Console.WriteLine($"{steps[i]} : {time} мс : {output[i]}");
+}
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, X, 1e-4, 2), 1e-4);
+#!markdown
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, SIN, 1e-5, 8), 1e-4);
+Итог: оптимальный шаг - 1e-5
 
-Assert.Equal(50, DefiniteIntegral.Solve(0, 10, X, 1e-6, 8), 1e-5);
+#!csharp
+
+using System.Diagnostics;
+#r "nuget:ScottPlot, 5.0.35"
+using Microsoft.DotNet.Interactive.Formatting;
+Formatter.Register(typeof(ScottPlot.Plot), (p, w) => 
+    w.Write(((ScottPlot.Plot)p).GetImageHtml(400, 300)), HtmlFormatter.MimeType);
+long[] dataX_time= new long[15];
+double[] dataY_threads = new double[15];
+int runs = 10;
+int optimal = 0;
+long min = long.MaxValue;
+double step = 1e-5;
+for (int threads = 0; threads < 15; threads++)
+{
+    long time = 0;
+    dataY_threads[threads] = threads+2;
+    for (int j = 0; j < runs; j++)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        DefiniteIntegral.Solve(-100, 100, SIN, step, threads+2);
+        stopwatch.Stop();
+        time += stopwatch.ElapsedMilliseconds;
+    }
+    dataX_time[threads] = time / runs;
+    if (dataX_time[threads] < min)
+    {
+        min = dataX_time[threads];
+        optimal = threads;
+    }
+}
+long avgsolvetime = dataX_time[optimal];
+Console.WriteLine($"Оптимальное число потоков: {dataY_threads[optimal]}, время выполнения {dataX_time[optimal]} мс");
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX_time, dataY_threads);
+plt
+
+#!csharp
+
+long solve1time = 0;
+for (int i = 0; i < runs; i++)
+{
+    var stopwatch = Stopwatch.StartNew();
+    Solve1(-100, 100, SIN, step);
+    stopwatch.Stop();
+    solve1time += stopwatch.ElapsedMilliseconds;
+}
+long avgsolve1time = solve1time / runs;
+Console.WriteLine($"Время выполнения однопоточной версии {avgsolve1time} мс")
+
+#!markdown
+
+Summary
+
+#!csharp
+
+double difference = (100 - avgsolvetime *100 / avgsolve1time);
+Console.WriteLine($"Оптимальный шаг: 1e-5");
+Console.WriteLine($"Оптимальное кол-во потоков: {dataY_threads[optimal]}");
+Console.WriteLine($"Среднее время работы многопоточной версии: {dataX_time[optimal]} мс");
+Console.WriteLine($"Среднее время работы однопоточной версии: {avgsolve1time} мс");
+Console.WriteLine($"Разница в скорости: {difference}%");
